@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+</head>
+
+<body>
+  <form id="registerForm">
+    <input id="username" type="text" />
+    <button type="submit">Register</button>
+  </form>
+  <script type="module">
+    import { create, parseCreationOptionsFromJSON } from 'https://cdn.jsdelivr.net/npm/@github/webauthn-json@2.1.1/dist/esm/webauthn-json.browser-ponyfill.js';
+    // Get a reference to our registration form
+    const registerForm = document.getElementById("registerForm");
+
+    // Listen for the form's "submit" event
+    registerForm.addEventListener("submit", async function(event) {
+      event.preventDefault();
+
+      // Get the username
+      const username = document.getElementById("username").value;
+
+      // Send request to Vapor app
+      const registerResponse = await fetch('/register?username=' + username);
+
+      // Parse response as json and pass into wrapped WebAuthn API
+      const registerResponseJSON = await registerResponse.json();
+      const passkey = await create(parseCreationOptionsFromJSON(registerResponseJSON));
+
+      // Send passkey to Vapor app
+      const createPasskeyResponse = await fetch('/passkeys', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(passkey)
+      });
+
+      location.href = "/private";
+    });
+  </script>
+</body>
+</html>

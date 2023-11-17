@@ -1,0 +1,16 @@
+{
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "sourceLanguages": [
+                "swift"
+            ],
+            "args": ["serve", "--hostname", "localhost", "--port", "8080"],
+            "cwd": "${workspaceFolder:swift-webauthn-guide}",
+            "name": "Debug App",
+            "program": "${workspaceFolder:swift-webauthn-guide}/.build/debug/App",
+            "preLaunchTask": "swift: Build Debug App"
+        }
+    ]
+}
