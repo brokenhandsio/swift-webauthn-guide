@@ -377,7 +377,7 @@ let verifiedAuthentication = try req.webAuthn.finishAuthentication(
 )
 ```
 
-Finally if `webAuthn.finishAuthentication` returns without throwing an error we know the login attempt was successful. We can now update the Passkey's `currentSignCount`, sign in the user and return a response:
+Finally if `webAuthn.finishAuthentication` returns without throwing an error we know the login attempt was successful. We can now update the Passkey's `currentSignCount`, sign in the user and return a response just after the call to `req.webAuthn.finishAuthentication`:
 
 ```swift
 credential.currentSignCount = verifiedAuthentication.newSignCount
