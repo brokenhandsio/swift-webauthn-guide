@@ -236,7 +236,7 @@ const createPasskeyResponse = await fetch('/passkeys', {
 });
 ```
 
-On the server we first obtain the user we want to register a Passkey for. Then we decode the Passkey from the request body and verify it. If everything went well we can persist the Passkey in our database:
+On the server we first obtain the user we want to register a Passkey for. Then we decode the Passkey from the request body and verify it. If everything went well we can persist the Passkey in our databas. Add this logic in a new `POST /register` endpoint:
 
 ```swift
 // Example implementation for a Vapor app
