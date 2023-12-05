@@ -2,14 +2,14 @@
 
 ### Introduction Structure:
 
-In this tutorial we will explore Passkeys. To be more specific, we'll explore how we can integrate the Swift WebAuthn library into a server-side Swift app. The process of registering and authenticating using Passkeys is pretty simple, but requires some back and forth between client and server. Therefor this tutorial is split into two separate parts:
+In this tutorial we will explore Passkeys. To be more specific, we'll explore how we can integrate the Swift WebAuthn library into a server-side Swift app. The process of registering and authenticating using Passkeys is pretty simple, but requires some back and forth between client and server. Therefore this tutorial is split into two separate parts:
 
 1. [Passkey Registration]()
 2. [Passkey Authentication]()
 
-To avoid starting completely from scratch and turning this blog article into a whole book, I prepared a small starter template which you can [download here](https://github.com/brokenhandsio/swift-webauthn-guide).
+To avoid starting completely from scratch and turning this blog article into a whole book, I prepared a small starter project which you can [download here](https://github.com/brokenhandsio/swift-webauthn-guide).
 
-Today I'll show you an example implementation for a standalone Passkey login, however it is also possible to integrate webauthn-swift along an existing, password-based, login.
+Today I'll show you an example implementation for a standalone Passkey login, however it is also possible to integrate webauthn-swift along an existing, password-based, login, for hardware based 2FA.
 
 What are Passkeys? Others already did a good job at explaining this, so why reinvent the wheel? Here is a quote from [passkeys.com](https://passkeys.com):
 
@@ -20,6 +20,7 @@ To read more about Passkeys and how they work I recommend the following two reso
 
 - Introduction: https://webauthn.guide/
 - Details: https://w3c.github.io/webauthn/
+- Apple Developer Documentation: https://developer.apple.com/passkeys/
 
 ## Act 1 - Setup
 
@@ -72,7 +73,7 @@ const credential = await navigator.credentials.create({
 
 #### Setting up the Relying Party
 
-If you haven't already downloaded the [starter template](https://github.com/brokenhandsio/swift-webauthn-guide), you should do so now. To start add the Swift WebAuthn library to your `Package.swift`:
+If you haven't already downloaded the [demo project](https://github.com/brokenhandsio/swift-webauthn-guide), you should do so now. There's a `starter` and `final` project. Open the starter project and add the Swift WebAuthn library to your `Package.swift`:
 
 ```Swift
 dependencies: [
@@ -86,12 +87,13 @@ targets: [
     .target(
         name: "App",
         dependencies: [
+            // ...
             .product(name: "WebAuthn", package: "webauthn-swift")
 // ...
 ]
 ```
 
-In our backend app we need to keep a `WebAuthnManager`, the core of the Swift WebAuthn library, instance somewhere. If you're using Vapor you could extend `Request` with a `webAuthn` property which allows us to easily access it in the route handlers. Add this somewhere in your code, e.g. in a new file `Request+webAuthn.swift`:
+First, you need to create an instance of `WebAuthnManager`, the core of the Swift WebAuthn library. The WebAuthn library works with any server-side Swift framework, but we'll use Vapor for this tutorial. With Vapor, you could extend `Request` with a `webAuthn` property which allows us to easily access it in the route handlers. Add this in a new file called `Request+webAuthn.swift`:
 
 ```swift
 import Vapor
@@ -101,8 +103,11 @@ extension Request {
     var webAuthn: WebAuthnManager {
         WebAuthnManager(
             config: WebAuthnManager.Config(
+                // 1
                 relyingPartyID: "localhost",
+                // 2
                 relyingPartyName: "Vapor Passkey Tutorial",
+                // 3
                 relyingPartyOrigin: "http://localhost:8080"
             )
         )
@@ -121,6 +126,8 @@ swift run App serve --hostname localhost
 ```
 
 Great, that's everything we need to get started.
+
+
 ## Act 2 - Registration
 
 From the UI perspective we only need three components: Two buttons and a text field for entering a username! No password field needed... that's why we're here after all! Let's start with building a quick registration form in HTML. Insert the following form into `Resources/Views/index.leaf` just after `<!-- Form -->`:
@@ -133,12 +140,14 @@ From the UI perspective we only need three components: Two buttons and a text fi
 ```
 
 The app should now return you a blank HTML form at http://localhost:8080/.
+
+
 ### Planning ahead
 
 Before we jump into the business logic let's write down what we need:
 1. When a user clicks the "Register" button we will notify our server about a new registration attempt.
-2. The server will put together a few information and send these back to the client (/browser).
-3. The client will take these information and toss them into the `create(parseCreationOptionsFromJSON(...))` JavaScript function which will trigger the Passkey prompt. The returned value of this function is our brand new Passkey! Great!
+2. The server will put together a few pieces of information and send these back to the client (the browser).
+3. The client will take this information and pass it into the `create(parseCreationOptionsFromJSON(...))` JavaScript function which will trigger the Passkey prompt. The returned value of this function is our brand new Passkey! Great!
 4. Before opening our first beer we quickly need to send our new Passkey back to the server, verify it and persist it in a database.
 
 It sounds like a lot of work, but it's actually pretty simple.
@@ -236,7 +245,7 @@ const createPasskeyResponse = await fetch('/passkeys', {
 });
 ```
 
-On the server we first obtain the user we want to register a Passkey for. Then we decode the Passkey from the request body and verify it. If everything went well we can persist the Passkey in our databas. Add this logic in a new `POST /register` endpoint:
+On the server we first obtain the user we want to register a Passkey for. Then we decode the Passkey from the request body and verify it. If everything went well we can persist the Passkey in our database. Add this logic in a new `POST /register` endpoint:
 
 ```swift
 // Example implementation for a Vapor app
@@ -343,7 +352,7 @@ app.get("login") { req in
 
 Additionally we store the challenge in a cookie because we'll need it later when verifying the Passkey. Running the server and pressing "Login" should now trigger the Passkey prompt. If you previously registered it should also show you the username (or a list of usernames if you registered more than one account). However if you try to confirm the prompt you'll notice that nothing happens.
 
-The last step will be to verify login attempts in the `POST /login` endpoint. Start by adding the endpoint and retreiving the challenge from the users session:
+The last step will be to verify login attempts in the `POST /login` endpoint. Start by adding the endpoint and retrieving the challenge from the users session:
 
 ```swift
 app.post("login") { req in
@@ -387,4 +396,4 @@ req.auth.login(credential.user)
 return HTTPStatus.ok
 ```
 
-Congratulations, you just built a Passkey login! Pressing the login button and confirming the Passkey prompt should redirect you to a private page. If you want to see the whole implementation you can find it in the "final" directory of the [starter template](https://github.com/brokenhandsio/swift-webauthn-guide).
+Congratulations, you just built a Passkey login! Pressing the login button and confirming the Passkey prompt should redirect you to a private page. If you want to see the whole implementation you can find it in the "final" directory of the [demo project](https://github.com/brokenhandsio/swift-webauthn-guide).
