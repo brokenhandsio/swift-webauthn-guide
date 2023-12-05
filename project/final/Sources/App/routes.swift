@@ -59,7 +59,12 @@ func routes(_ app: Application) throws {
             confirmCredentialIDNotRegisteredYet: { _ in true}
         )
 
-        try await Passkey(from: credential, userID: user.requireID()).save(on: req.db)
+        try await Passkey(
+            id: credential.id,
+            publicKey: credential.publicKey.base64URLEncodedString().asString(),
+            currentSignCount: credential.signCount,
+            userID: user.requireID()
+        ).save(on: req.db)
 
         return HTTPStatus.ok
     })

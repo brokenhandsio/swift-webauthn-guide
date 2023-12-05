@@ -7,7 +7,7 @@ In this tutorial we will explore Passkeys. To be more specific, we'll explore ho
 1. [Passkey Registration]()
 2. [Passkey Authentication]()
 
-To avoid starting completely from scratch and turning this blog article into a whole book, I prepared a small starter template which you can [download here](tbd).
+To avoid starting completely from scratch and turning this blog article into a whole book, I prepared a small starter template which you can [download here](https://github.com/brokenhandsio/swift-webauthn-guide).
 
 Today I'll show you an example implementation for a standalone Passkey login, however it is also possible to integrate webauthn-swift along an existing, password-based, login.
 
@@ -72,7 +72,7 @@ const credential = await navigator.credentials.create({
 
 #### Setting up the Relying Party
 
-If you haven't already downloaded the starter template, you should do so now. To start add the Swift WebAuthn library to your `Package.swift`:
+If you haven't already downloaded the [starter template](https://github.com/brokenhandsio/swift-webauthn-guide), you should do so now. To start add the Swift WebAuthn library to your `Package.swift`:
 
 ```Swift
 dependencies: [
@@ -260,7 +260,12 @@ app.post("register", use: { req in
         confirmCredentialIDNotRegisteredYet: { _ in true}
     )
 
-    try await Passkey(from: credential, userID: user.requireID()).save(on: req.db)
+    try await Passkey(
+        id: credential.id,
+        publicKey: credential.publicKey.base64URLEncodedString().asString(),
+        currentSignCount: credential.signCount,
+        userID: user.requireID()
+    ).save(on: req.db)
 
     return HTTPStatus.ok
 })
@@ -311,20 +316,20 @@ loginForm.addEventListener("submit", async function(event) {
 Similar to the registration we listen for the form's `submit` event. On submit we send a `/login` request to our backend. The response contains a handful of options and a randomly generated challenge. When passing this data to `get(parseRequestOptionsFromJSON(...))` the browser will prompt the user to log in using a Passkey. On success the challenge will be signed by the Passkey. This signed challenge is what we send back to the server in a second request. Add this just after `const loginAttempt = await get(parseRequestOptionsFromJSON(loginResponseJSON));`:
 
 ```JS
-  // Send passkey to Vapor app
-  const loginAttemptResponse = await fetch('/login', {
+// Send passkey to Vapor app
+const loginAttemptResponse = await fetch('/login', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'
+        'Content-Type': 'application/json'
     },
     body: JSON.stringify(loginAttempt)
-  });
+});
 
-  // Redirect to private page
-  location.href = "/private";
+// Redirect to private page
+location.href = "/private";
 ```
 
-This will send the login attempt with the signed challenge to our server and redirect the user to the private page if everything went well.  Let's implement the server side of things. First add the endpoint that handles the `GET /login` request returning the options and randomly generated challenge:
+This will send the login attempt with the signed challenge to our server and redirect the user to the private page if everything went well. Let's implement the server side of things. First add the endpoint that handles the `GET /login` request returning the options and a randomly generated challenge:
 
 ```swift
 app.get("login") { req in
@@ -336,7 +341,9 @@ app.get("login") { req in
 }
 ```
 
-Additionally we store the challenge in a cookie because we'll need it later when verifying the Passkey. Almost done, the last step will be to verify login attempts in the `POST /login` endpoint. Start by adding the endpoint and retreiving the challenge from the users session. :
+Additionally we store the challenge in a cookie because we'll need it later when verifying the Passkey. Running the server and pressing "Login" should now trigger the Passkey prompt. If you previously registered it should also show you the username (or a list of usernames if you registered more than one account). However if you try to confirm the prompt you'll notice that nothing happens.
+
+The last step will be to verify login attempts in the `POST /login` endpoint. Start by adding the endpoint and retreiving the challenge from the users session:
 
 ```swift
 app.post("login") { req in
@@ -350,7 +357,7 @@ app.post("login") { req in
 }
 ```
 
-To prevent attackers from reusing the challenge we delete it from the session right away. Read more about replay attacks here: https://en.wikipedia.org/wiki/Replay_attack. To verify the login attempt we first decode it from the request body and try to find the corresponding Passkey in our database. If we find a Passkey we can verify the login attempt. Add this below `req.session.data["authChallenge"] = nil`:
+To prevent attackers from reusing the challenge we delete it from the session right away. Read more about replay attacks [here](https://en.wikipedia.org/wiki/Replay_attack). To verify the login attempt we first decode it from the request body and try to find the corresponding Passkey in our database. If we find a Passkey we can continue and verify the login attempt. Add this below `req.session.data["authChallenge"] = nil`:
 
 ```swift
 let authenticationCredential = try req.content.decode(AuthenticationCredential.self)
@@ -370,7 +377,7 @@ let verifiedAuthentication = try req.webAuthn.finishAuthentication(
 )
 ```swift
 
-If `webAuthn.finishAuthentication` returns without throwing an error we know the login attempt was successful. We can now update the Passkey's `currentSignCount`, sign in the user and return a response:
+Finally if `webAuthn.finishAuthentication` returns without throwing an error we know the login attempt was successful. We can now update the Passkey's `currentSignCount`, sign in the user and return a response:
 
 ```swift
 credential.currentSignCount = verifiedAuthentication.newSignCount
@@ -380,4 +387,4 @@ req.auth.login(credential.user)
 return HTTPStatus.ok
 ```
 
-Congratulations, you just built a Passkey login! Entering a username and hitting "Login" should now redirect you to a private page. The passkey should also appear in your database (in the passkeys table) now. If you want to see the whole implementation you can find it [here](tbd).
+Congratulations, you just built a Passkey login! Pressing the login button and confirming the Passkey prompt should redirect you to a private page. If you want to see the whole implementation you can find it in the "final" directory of the [starter template](https://github.com/brokenhandsio/swift-webauthn-guide).

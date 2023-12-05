@@ -23,6 +23,30 @@
             "name": "Release App (project/final)",
             "program": "${workspaceFolder:swift-webauthn-guide}/project/final/.build/release/App",
             "preLaunchTask": "swift: Build Release App (project/final)"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "sourceLanguages": [
+                "swift"
+            ],
+            "args": [],
+            "cwd": "${workspaceFolder:swift-webauthn-guide}/project/starter",
+            "name": "Debug App (project/starter)",
+            "program": "${workspaceFolder:swift-webauthn-guide}/project/starter/.build/debug/App",
+            "preLaunchTask": "swift: Build Debug App (project/starter)"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "sourceLanguages": [
+                "swift"
+            ],
+            "args": [],
+            "cwd": "${workspaceFolder:swift-webauthn-guide}/project/starter",
+            "name": "Release App (project/starter)",
+            "program": "${workspaceFolder:swift-webauthn-guide}/project/starter/.build/release/App",
+            "preLaunchTask": "swift: Build Release App (project/starter)"
         }
     ]
 }
