@@ -9,8 +9,13 @@
     <input id="username" type="text" />
     <button type="submit">Register</button>
   </form>
+
+  <form id="loginForm">
+    <button type="submit">Login</button>
+  </form>
+
   <script type="module">
-    import { create, parseCreationOptionsFromJSON } from 'https://cdn.jsdelivr.net/npm/@github/webauthn-json@2.1.1/dist/esm/webauthn-json.browser-ponyfill.js';
+    import { create, get, parseCreationOptionsFromJSON, parseRequestOptionsFromJSON } from 'https://cdn.jsdelivr.net/npm/@github/webauthn-json@2.1.1/dist/esm/webauthn-json.browser-ponyfill.js';
     // Get a reference to our registration form
     const registerForm = document.getElementById("registerForm");
 
@@ -29,12 +34,37 @@
       const passkey = await create(parseCreationOptionsFromJSON(registerResponseJSON));
 
       // Send passkey to Vapor app
-      const createPasskeyResponse = await fetch('/passkeys', {
+      const createPasskeyResponse = await fetch('/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(passkey)
+      });
+
+      location.href = "/private";
+    });
+
+    // Get a reference to our login form
+    const loginForm = document.getElementById("loginForm");
+    // Listen for the form's "submit" event
+    loginForm.addEventListener("submit", async function(event) {
+      event.preventDefault();
+
+      // Send request to Vapor app
+      const loginResponse = await fetch('/login');
+
+      // Parse response as json and pass into wrapped WebAuthn API
+      const loginResponseJSON = await loginResponse.json();
+      const loginAttempt = await get(parseRequestOptionsFromJSON(loginResponseJSON));
+
+      // Send passkey to Vapor app
+      const loginAttemptResponse = await fetch('/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(loginAttempt)
       });
 
       location.href = "/private";

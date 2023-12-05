@@ -7,7 +7,7 @@ In this tutorial we will explore Passkeys. To be more specific, we'll explore ho
 1. [Passkey Registration]()
 2. [Passkey Authentication]()
 
-To avoid starting completely from scratch and turning this 2-part blog article into a whole book, I prepared a small starter template which you can [download here]().
+To avoid starting completely from scratch and turning this blog article into a whole book, I prepared a small starter template which you can [download here](tbd).
 
 Today I'll show you an example implementation for a standalone Passkey login, however it is also possible to integrate webauthn-swift along an existing, password-based, login.
 
@@ -70,7 +70,7 @@ const credential = await navigator.credentials.create({
 });
 ```
 
-#### Setting up the Relying Party 
+#### Setting up the Relying Party
 
 If you haven't already downloaded the starter template, you should do so now. To start add the Swift WebAuthn library to your `Package.swift`:
 
@@ -112,8 +112,13 @@ extension Request {
 
 Here we configure 3 things:
 1. The `relyingPartyID` identifies your app based solely on the domain (not the scheme, port, or path) it can be accessed on. All created Passkeys will be scoped to this identifier. That means a Passkey created at `example.org` can only be used on the same domain. This prevents other websites from talking to random Passkeys. However this also means if you want to change your domain at some point all users need to re-create their Passkeys!
-2. The `relyingPartyName` is just a friendly name shown to the user when registering or logging in. 
+2. The `relyingPartyName` is just a friendly name shown to the user when registering or logging in.
 3. The `relyingPartyOrigin` works similar to the relying party id, but [serves as an additional layer of protection](https://w3c.github.io/webauthn/#sctn-validating-origin). Here we need to specify the whole origin. In our case it's the scheme `https://` + the relying party id + the port `:8080`
+
+🚨 It is important that you run your app on `localhost` and not on `127.0.0.1` since _some_ WebAuthn browser implementations, password managers and authenticators only work with "valid" domains. With Vapor you can achieve this by using `--hostname localhost`:
+```bash
+swift run App serve --hostname localhost
+```
 
 Great, that's everything we need to get started.
 ## Act 2 - Registration
@@ -133,7 +138,7 @@ The app should now return you a blank HTML form at http://localhost:8080/.
 Before we jump into the business logic let's write down what we need:
 1. When a user clicks the "Register" button we will notify our server about a new registration attempt.
 2. The server will put together a few information and send these back to the client (/browser).
-3. The client will take these information and toss them into the `create(parseCreationOptionsFromJSON(...))` JavaScript function which will trigger the Passkey prompt. The returned value of this function is our brand new Passkey! Great! 
+3. The client will take these information and toss them into the `create(parseCreationOptionsFromJSON(...))` JavaScript function which will trigger the Passkey prompt. The returned value of this function is our brand new Passkey! Great!
 4. Before opening our first beer we quickly need to send our new Passkey back to the server, verify it and persist it in a database.
 
 It sounds like a lot of work, but it's actually pretty simple.
@@ -163,26 +168,15 @@ Alright let's start with step one. Add this after the closing `</form>` tag from
     // Parse response as json and pass into wrapped WebAuthn API
     const registerResponseJSON = await registerResponse.json();
     const passkey = await create(parseCreationOptionsFromJSON(registerResponseJSON));
-
-    // Send passkey to server
-    const createPasskeyResponse = await fetch('/passkeys', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(passkey)
-    });
-
-    location.href = "/private";
   });
 </script>
 ```
 
-First we add a third-party script developed by GitHub which adds user-friendly wrappers on top of the original WebAuthn APIs `navigator.credentials.create` and `navigator.credentials.get`. This is just for convenience and not mandatory! If you don't want to use it you'll have to deserialise some of the `registrationOptions` properties since the original API expects a few "raw" byte arrays. Using the wrapper we can simply pass in the JSON response from our server - neat! The official WebAuthn API will [support this out of the box at some point](https://w3c.github.io/webauthn/#sctn-parseCreationOptionsFromJSON), but for now we depend on GitHub's "webauthn-json" script.
+First we add a third-party script developed by GitHub which adds user-friendly wrappers on top of the original WebAuthn APIs `navigator.credentials.create` and `navigator.credentials.get`. This is just for convenience and not mandatory! If you don't want to use it you'll have to deserialise some of the `registrationOptions` properties since the original API expects a few "raw" byte arrays. Using the wrapper we can simply pass in the JSON response from our server - neat! The official WebAuthn API will [support this out of the box at some point](https://w3c.github.io/webauthn/#sctn-parseCreationOptionsFromJSON), but for now we depend on GitHub's "webauthn-json" library.
 
-Our script will listen for the form's `submit` event. On submit it sends a `/signup` request to our backend and passes the JSON response to `create(parseCreationOptionsFromJSON(...))` thus triggering the browsers Passkey prompt.
+Our script will listen for the form's `submit` event. On submit it sends a `/register` request to our backend and passes the JSON response to `create(parseCreationOptionsFromJSON(...))` thus triggering the browsers Passkey prompt.
 
-On the server side of things we still need to add the endpoint we just called in the JavaScript code. In a Vapor app you'd have to register a new route in `routes.swift`:
+If the user successfully responds to the prompt we'll get a brand new passkey in `const passkey`. Later we will send this passkey to our server and verify it. On the server side of things we still need to add the endpoint we just called in the JavaScript code. In a Vapor app you'd have to register a new route in `routes.swift`:
 
 ```swift
 app.get("register") { req in
@@ -230,7 +224,7 @@ Time to give it a try: Entering a username and clicking "Register" should trigge
 
 After the browser created the Passkey we need to send it to our server, verify everything went smoothly and persist it somewhere.
 
-First, let's send the Passkey to our server. Add this below `const registrationCredential` in our JS script:
+First, let's send the Passkey to our server. In our JavaScript code add this just below `const passkey = await create(parseCreationOptionsFromJSON(registerResponseJSON));` in the `registerForm` event listener:
 
 ```JS
 const createPasskeyResponse = await fetch('/passkeys', {
@@ -242,18 +236,18 @@ const createPasskeyResponse = await fetch('/passkeys', {
 });
 ```
 
-On the server we handle the request like this:
+On the server we first obtain the user we want to register a Passkey for. Then we decode the Passkey from the request body and verify it. If everything went well we can persist the Passkey in our database:
 
 ```swift
 // Example implementation for a Vapor app
-app.post("passkeys", use: { req in
+app.post("register", use: { req in
     // Obtain the user we're registering a credential for
     let user = try req.auth.require(User.self)
 
     // Obtain the challenge we stored for this session
     guard let challengeEncoded = req.session.data["registrationChallenge"],
         let challenge = Data(base64Encoded: challengeEncoded) else {
-        throw Abort(.badRequest, reason: "Missing registration session ID")
+        throw Abort(.badRequest, reason: "Missing registration challenge")
     }
 
     // Delete the challenge to prevent attackers from reusing it
@@ -273,3 +267,117 @@ app.post("passkeys", use: { req in
 ```
 
 Congratulations, you just built a Passkey registration! Entering a username and hitting "Register" should now redirect you to a private page. The passkey should also appear in your database (in the passkeys table) now.
+
+## Act 2 - Log in
+
+Now that we have a Passkey we can use it to log in. The process is very similar to the registration process, except we don't need an input field for the username.
+Let's start with the frontend. Add a new HTML form below the registration in `Resources/Views/index.leaf`:
+
+```HTML
+</form>
+<!-- End of registration form -->
+
+<form id="loginForm">
+    <button type="submit">Login</button>
+</form>
+```
+
+Next we need to import two additional helper from the GitHub WebAuthn wrapper. Update the import statement in the `<script>` tag to include `get` and `parseRequestOptionsFromJSON`:
+
+```JS
+import { create, get, parseCreationOptionsFromJSON, parseRequestOptionsFromJSON } from 'https://cdn.jsdelivr.net.....
+```
+
+At the end of the script add the following code:
+```JS
+// ...
+//     location.href = "/private";
+// });
+
+// Get a reference to our login form
+const loginForm = document.getElementById("loginForm");
+
+// Listen for the form's "submit" event
+loginForm.addEventListener("submit", async function(event) {
+  event.preventDefault();
+  // Send request to Vapor app
+  const loginResponse = await fetch('/login');
+  // Parse response as json and pass into wrapped WebAuthn API
+  const loginResponseJSON = await loginResponse.json();
+  const loginAttempt = await get(parseRequestOptionsFromJSON(loginResponseJSON));
+});
+```
+
+Similar to the registration we listen for the form's `submit` event. On submit we send a `/login` request to our backend. The response contains a handful of options and a randomly generated challenge. When passing this data to `get(parseRequestOptionsFromJSON(...))` the browser will prompt the user to log in using a Passkey. On success the challenge will be signed by the Passkey. This signed challenge is what we send back to the server in a second request. Add this just after `const loginAttempt = await get(parseRequestOptionsFromJSON(loginResponseJSON));`:
+
+```JS
+  // Send passkey to Vapor app
+  const loginAttemptResponse = await fetch('/login', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(loginAttempt)
+  });
+
+  // Redirect to private page
+  location.href = "/private";
+```
+
+This will send the login attempt with the signed challenge to our server and redirect the user to the private page if everything went well.  Let's implement the server side of things. First add the endpoint that handles the `GET /login` request returning the options and randomly generated challenge:
+
+```swift
+app.get("login") { req in
+    // Generate registration options
+    let options = try req.webAuthn.beginAuthentication()
+    // Also pass along challenge because we need it later
+    req.session.data["authChallenge"] = Data(options.challenge).base64EncodedString()
+    return RequestCredentialOptions(publicKey: options)
+}
+```
+
+Additionally we store the challenge in a cookie because we'll need it later when verifying the Passkey. Almost done, the last step will be to verify login attempts in the `POST /login` endpoint. Start by adding the endpoint and retreiving the challenge from the users session. :
+
+```swift
+app.post("login") { req in
+    // Obtain the challenge we stored on the server for this session
+    guard let challengeEncoded = req.session.data["authChallenge"],
+        let challenge = Data(base64Encoded: challengeEncoded) else {
+        throw Abort(.badRequest, reason: "Missing authentication challenge")
+    }
+
+    req.session.data["authChallenge"] = nil
+}
+```
+
+To prevent attackers from reusing the challenge we delete it from the session right away. Read more about replay attacks here: https://en.wikipedia.org/wiki/Replay_attack. To verify the login attempt we first decode it from the request body and try to find the corresponding Passkey in our database. If we find a Passkey we can verify the login attempt. Add this below `req.session.data["authChallenge"] = nil`:
+
+```swift
+let authenticationCredential = try req.content.decode(AuthenticationCredential.self)
+
+guard let credential = try await Passkey.query(on: req.db)
+    .filter(\.$id == authenticationCredential.id.urlDecoded.asString())
+    .with(\.$user)
+    .first() else {
+    throw Abort(.unauthorized)
+}
+
+let verifiedAuthentication = try req.webAuthn.finishAuthentication(
+    credential: authenticationCredential,
+    expectedChallenge: [UInt8](challenge),
+    credentialPublicKey: [UInt8](URLEncodedBase64(credential.publicKey).urlDecoded.decoded!),
+    credentialCurrentSignCount: credential.currentSignCount
+)
+```swift
+
+If `webAuthn.finishAuthentication` returns without throwing an error we know the login attempt was successful. We can now update the Passkey's `currentSignCount`, sign in the user and return a response:
+
+```swift
+credential.currentSignCount = verifiedAuthentication.newSignCount
+try await credential.save(on: req.db)
+
+req.auth.login(credential.user)
+return HTTPStatus.ok
+```
+
+Congratulations, you just built a Passkey login! Entering a username and hitting "Login" should now redirect you to a private page. The passkey should also appear in your database (in the passkeys table) now. If you want to see the whole implementation you can find it [here](tbd).
