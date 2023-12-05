@@ -375,7 +375,7 @@ let verifiedAuthentication = try req.webAuthn.finishAuthentication(
     credentialPublicKey: [UInt8](URLEncodedBase64(credential.publicKey).urlDecoded.decoded!),
     credentialCurrentSignCount: credential.currentSignCount
 )
-```swift
+```
 
 Finally if `webAuthn.finishAuthentication` returns without throwing an error we know the login attempt was successful. We can now update the Passkey's `currentSignCount`, sign in the user and return a response:
 
